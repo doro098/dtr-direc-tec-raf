@@ -1,10 +1,9 @@
 # dtr-direc-tec-raf
 
-Monorepo padre: mulinku + tag-mule + tureparto
+Monorepo padre: tag-mule + tureparto
 
 ## Repositorios
 
-- [mulinku](https://github.com/gary-host-laptop/mulinku) (rama: main)
 - [tag_mule](https://github.com/doro098/tag_mule) (rama: master)
 - [tureparto](https://github.com/doro098/tureparto) (rama: main)
 
@@ -18,6 +17,3 @@ cd dtr-direc-tec-raf
 git submodule update --init --recursive
 ```
 
-## Más repositorios
-
-[Ver todos los repositorios →](https://github.com/doro098?tab=repositories)
