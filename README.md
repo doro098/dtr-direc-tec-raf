@@ -4,7 +4,7 @@ Monorepo padre: mulinku + tag-mule + tureparto
 
 ## Repositorios
 
-- [mulinku](https://github.com/gary-host-laptop/mulinku) (rama: feature/tag-mule)
+- [mulinku](https://github.com/gary-host-laptop/mulinku) (rama: main)
 - [tag_mule](https://github.com/doro098/tag_mule) (rama: master)
 - [tureparto](https://github.com/doro098/tureparto) (rama: main)
 
