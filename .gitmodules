@@ -1,7 +1,7 @@
 [submodule "mulinku"]
 	path = mulinku
 	url = https://github.com/gary-host-laptop/mulinku.git
-	branch = feature/tag-mule
+	branch = main
 [submodule "tag_mule"]
 	path = tag_mule
 	url = https://github.com/doro098/tag_mule.git
