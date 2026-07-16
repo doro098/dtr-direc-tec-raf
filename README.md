@@ -20,17 +20,26 @@ git submodule update --init --recursive
 ## Prerrequisitos
 
 - Docker (Engine)
-- docker-compose (o `docker compose` integrado)
+- docker-compose o `docker compose` (integrado)
 - jq (opcional, para formatear JSON en la CLI)
 - python3 (opcional, para pruebas rápidas)
 
-## Cómo levantar el entorno (rápido)
+## Resumen: qué se levanta
 
-Recomendado: usar Docker y docker-compose para levantar los servicios de forma reproducible.
+El entorno de desarrollo mínimo recomendado levanta:
+- Ollama (LLM runtime)
+- Tag‑Mule (servicio Python que expone `/api/v1/enrich`)
+- Cliente receptor `cliente-tureparto` (mock que recibe callbacks en `/webhook`)
 
-1) Preparar la configuración de tag-mule
+Todos los servicios pueden orquestarse desde la raíz con `docker compose` y el `docker-compose.yml` raíz (o usando `tag_mule/docker-compose.yml` si preferís levantar solo ese subconjunto).
 
-- Editá `tag_mule/config.yaml` (crealo si no existe) y asegurate de que el bloque para `tureparto` tenga un `callback_url` apuntando al receptor que usarás. Ejemplo mínimo:
+---
+
+## Pasos para levantar el servidor (detallado y probado)
+
+1) Preparar `tag_mule` config
+
+- Editá (o creá) `tag_mule/config.yaml` y asegurate de que `sources.tureparto.callback_url` apunte a `http://cliente-tureparto:3001/webhook` si vas a usar el compose raíz. Ejemplo mínimo:
 
 ```yaml
 sources:
@@ -52,25 +61,51 @@ sources:
       - cancelacion
 ```
 
-- Alternativa (si preferís ejecutar localmente sin YAML): en `tag_mule` existe `config.example.py`. Podés copiarlo a `config.py` y ajustar las variables de entorno (LLM_BASE_URL, LLM_MODEL, etc.).
+2) Levantar todo con docker-compose (recomendado)
 
-2) Levantar servicios con docker-compose (desde la raíz del monorepo)
-
-Si querés levantar solo el stack de tagging (ollama + tag-mule + cliente):
+- Desde la raíz del monorepo:
 
 ```bash
-docker-compose -f tag_mule/docker-compose.yml up -d --build
+# Levanta ollama + tag-mule + cliente-tureparto
+docker compose up -d --build
 ```
 
-(este compose monta `./tag-mule/config.yaml` en el contenedor de tag-mule — revisá que esté correcto antes de subir)
+Si no tenés `docker compose` integrado, usá `docker-compose -f docker-compose.yml up -d --build`.
 
-3) Verificar que tag-mule esté arriba
+3) Alternativa: correr Ollama por separado (opcional)
+
+Si no querés arrancar Ollama desde compose o lo tenés en otra máquina, podés lanzarlo en Docker con:
+
+```bash
+# correr Ollama en Docker (exponiendo puerto 11434)
+docker run -d --name ollama -p 11434:11434 -v ollama_data:/root/.ollama ollama/ollama:latest
+```
+
+- Si arrancaste Ollama así, ajustá `tag_mule` para usar `http://host.docker.internal:11434` (Mac/Win) o `http://<IP_DEL_HOST>:11434` (Linux) como `OLLAMA_URL`.
+
+4) Pre-cargar modelos en Ollama (recomendado antes de pruebas)
+
+- Si Ollama corre en un contenedor llamado `ollama` (compose o docker run):
+
+```bash
+# con docker compose
+docker compose exec -it ollama ollama pull qwen2.5:3b
+docker compose exec -it ollama ollama pull nomic-embed-text
+
+# ó con docker cli (si corristes docker run):
+docker exec -it ollama ollama pull qwen2.5:3b
+docker exec -it ollama ollama pull nomic-embed-text
+```
+
+Estos comandos descargan los modelos al volumen `ollama_data` y evitan tiempo de espera cuando tag-mule pide inferencias.
+
+5) Verificar que tag-mule esté arriba
 
 ```bash
 curl -s http://localhost:8080/api/v1/health | jq
 ```
 
-Deberías ver algo como:
+Respuesta esperada (ejemplo):
 
 ```json
 {
@@ -81,31 +116,11 @@ Deberías ver algo como:
 }
 ```
 
-4) Prueba rápida del flujo (callback)
+6) Probar el flujo completo (enviar job y recibir callback)
 
-Opción A — receptor temporal en tu host (debug local):
-
-- Editá `tag_mule/config.yaml` y poné temporalmente el callback URL a `http://host.docker.internal:8089/webhook` (en Docker Desktop) o `http://localhost:8089/webhook` si tu red lo permite.
-
-- Ejecutá un receptor temporal en el puerto 8089:
-
-```bash
-python3 - <<PY
-from http.server import BaseHTTPRequestHandler, HTTPServer
-
-class Handler(BaseHTTPRequestHandler):
-    def do_POST(self):
-        length = int(self.headers.get('content-length', 0))
-        body = self.rfile.read(length).decode('utf-8')
-        print('CALLBACK RECEIVED:', body)
-        self.send_response(200)
-        self.end_headers()
-
-HTTPServer(('0.0.0.0', 8089), Handler).serve_forever()
-PY
-```
-
-- Enviar un job a tag-mule:
+- Opción A — receptor dentro de Docker (compose raíz):
+  - Asegurate que `tag_mule/config.yaml` use `http://cliente-tureparto:3001/webhook`.
+  - Enviar job:
 
 ```bash
 curl -s -X POST http://localhost:8080/api/v1/enrich \
@@ -113,38 +128,41 @@ curl -s -X POST http://localhost:8080/api/v1/enrich \
   -d '{"source":"tureparto","item_id":"test-1","text":"Mensaje de prueba","existing_tags": []}' | jq
 ```
 
-- Mirá la terminal del receptor: deberías ver el payload que tag-mule envía como callback.
-
-Opción B — receptor dentro de Docker (cliente en compose):
-
-- Asegurate que `tag_mule/config.yaml` tenga `callback_url: http://cliente-tureparto:3001/webhook`.
-- Levantá el compose en `tag_mule/docker-compose.yml` (ver paso 2).
-- Si existe el servicio `cliente-tureparto` en el compose, éste recibirá el callback y deberías ver logs con la petición.
-
-## Comandos útiles
-
-- Ver logs de tag-mule:
-  - `docker-compose -f tag_mule/docker-compose.yml logs -f tag-mule`
-- Listar contenedores: `docker ps`
-- Parar y limpiar:
+  - Revisá los logs del receptor (cliente-tureparto):
 
 ```bash
-docker-compose -f tag_mule/docker-compose.yml down
-# borrar imágenes locales y volúmenes (opcional)
-docker-compose -f tag_mule/docker-compose.yml down --rmi local --volumes
+docker compose logs -f cliente-tureparto
 ```
 
-## Notas y consejos
-
-- En Mac/Windows, para que un contenedor alcance un servidor que corre en tu host usa `host.docker.internal` en la URL de callback.
-- Asegurate que el `config.yaml` que montás en el contenedor (./tag-mule/config.yaml) coincida con la documentación y apunte al receptor correcto.
-- `item_id` que envías a tag-mule corresponde internamente a `original_msg_id` en la DB de TuReparto.
-- Si algo falla revisá los logs y el health endpoint; problemas típicos: puertos ocupados, URL del callback incorrecta, o modelos no cargados en Ollama.
+- Opción B — receptor temporal en el host (debug):
+  - Cambiá temporalmente el callback a `http://host.docker.internal:8089/webhook` en `tag_mule/config.yaml` (Docker Desktop) y ejecutá el receptor Python en tu host (ver ejemplos en este README).
 
 ---
 
-Si querés, puedo: 
-- añadir un `docker-compose.yml` en la raíz que orqueste ollama + tag-mule + cliente-tureparto, y
-- añadir un script `tag_mule/scripts/test_integration.sh` para automatizar la prueba de callback.
+## Comandos útiles
 
-Decime si querés que lo agregue y lo commiteo ahora.
+- Ver contenedores: `docker ps`
+- Ver logs en tiempo real:
+  - `docker compose logs -f tag-mule`
+  - `docker compose logs -f cliente-tureparto`
+- Parar y limpiar:
+
+```bash
+docker compose down
+# opcional: borrar imágenes locales y volúmenes
+docker compose down --rmi local --volumes
+```
+
+## Requisitos de recursos y notas
+
+- Ollama y los modelos pueden ser grandes: revisá RAM/CPU disponibles antes de descargar modelos pesados (p. ej. qwen2.5:3b). Para pruebas locales usa modelos más ligeros.
+- Si Ollama está en el host y los contenedores deben llegar al host, usá `host.docker.internal` (Mac/Windows) o la IP del host en Linux.
+- Asegurate de que las rutas `build:` en el `docker-compose.yml` sean correctas para tu estructura (ej.: `./tag_mule` y `./cliente_tureparto`).
+
+---
+
+Si querés, subo también los siguientes archivos al repo ahora mismo (commit directo):
+- `docker-compose.yml` en la raíz (compose que orquesta ollama + tag-mule + cliente-tureparto)
+- `cliente_tureparto/` (mock receiver: Dockerfile, app.py, requirements.txt)
+
+Confirmame si querés que los cree y comitee ahora y lo hago. Si preferís pegarlos vos, ya están los contenidos arriba.
