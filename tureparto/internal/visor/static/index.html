@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>cliente-tureparto • dashboard</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0a0a0f;
+    color: #00ff88;
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 14px;
+    padding: 20px;
+  }
+  h1 {
+    font-size: 18px;
+    color: #00ff88;
+    border-bottom: 1px solid #00ff88;
+    padding-bottom: 8px;
+    margin-bottom: 16px;
+  }
+  h1 span {
+    color: #666;
+    font-size: 12px;
+  }
+  .stats {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 16px;
+    font-size: 12px;
+  }
+  .stat {
+    background: #111;
+    padding: 8px 12px;
+    border: 1px solid #222;
+  }
+  .stat-label { color: #888; }
+  .stat-value { color: #00ff88; }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+  }
+  th {
+    text-align: left;
+    color: #888;
+    border-bottom: 1px solid #222;
+    padding: 8px 4px;
+    font-weight: normal;
+  }
+  td {
+    padding: 6px 4px;
+    border-bottom: 1px solid #111;
+    vertical-align: top;
+  }
+  .status-pending { color: #ffaa00; }
+  .status-sent_to_mule { color: #00aaff; }
+  .status-completed { color: #00ff88; }
+  .status-failed { color: #ff4444; }
+  .msg-body {
+    color: #ccc;
+    max-width: 300px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .tags {
+    color: #ff66cc;
+  }
+  .error {
+    color: #ff4444;
+    font-size: 11px;
+  }
+  .last-update {
+    color: #555;
+    font-size: 11px;
+    margin-top: 10px;
+  }
+</style>
+</head>
+<body>
+  <h1>cliente-tureparto <span>dashboard</span></h1>
+  <div class="stats">
+    <div class="stat"><span class="stat-label">auto-refresh</span> <span class="stat-value">30s</span></div>
+    <div class="stat"><span class="stat-label">records</span> <span class="stat-value" id="record-count">0</span></div>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Teléfono</th>
+        <th>Mensaje</th>
+        <th>Estado</th>
+        <th>Tags</th>
+        <th>Job ID</th>
+      </tr>
+    </thead>
+    <tbody id="data-body">
+      <tr><td colspan="6" style="color:#555;text-align:center;">cargando...</td></tr>
+    </tbody>
+  </table>
+  <div class="last-update" id="last-update">---</div>
+  <script>
+    function fmtTime(t) {
+      if (!t) return '-';
+      try { return new Date(t + 'Z').toLocaleString(); } catch(e) { return t; }
+    }
+    function escapeHTML(s) {
+      return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+    async function loadData() {
+      try {
+        const resp = await fetch('/api/data');
+        const data = await resp.json();
+        const tbody = document.getElementById('data-body');
+        if (!Array.isArray(data) || data.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="6" style="color:#555;text-align:center;">sin datos</td></tr>';
+          document.getElementById('record-count').textContent = '0';
+          return;
+        }
+        document.getElementById('record-count').textContent = data.length;
+        tbody.innerHTML = data.map(item => {
+          let tags = '';
+          if (item.suggested_tags) {
+            try { tags = JSON.parse(item.suggested_tags).join(', '); } catch(e) { tags = item.suggested_tags; }
+          }
+          return '<tr>' +
+            '<td>' + escapeHTML(item.original_msg_id) + '</td>' +
+            '<td>' + escapeHTML(item.phone_number) + '</td>' +
+            '<td class="msg-body" title="' + escapeHTML(item.message_body) + '">' + escapeHTML(item.message_body.substring(0, 80)) + '</td>' +
+            '<td class="status-' + item.status + '">' + item.status + '</td>' +
+            '<td class="tags">' + escapeHTML(tags) + '</td>' +
+            '<td style="color:#555;font-size:11px;">' + escapeHTML(item.tag_mule_job_id || item.job_id || '') + '</td>' +
+            '</tr>';
+        }).join('');
+        document.getElementById('last-update').textContent = 'última actualización: ' + new Date().toLocaleString();
+      } catch(e) {
+        document.getElementById('data-body').innerHTML = '<tr><td colspan="6" style="color:#ff4444;">error: ' + e.message + '</td></tr>';
+      }
+    }
+    loadData();
+    setInterval(loadData, 30000);
+  </script>
+</body>
+</html>

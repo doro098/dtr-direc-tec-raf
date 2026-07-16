@@ -1,0 +1,85 @@
+version: "3.9"
+
+services:
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    networks:
+      - dtr-network
+    restart: unless-stopped
+
+  tag-mule:
+    build: ./tag_mule
+    container_name: tag-mule
+    ports:
+      - "8080:8080"
+    environment:
+      - PORT=8080
+      - DB_PATH=/data/tagmule.db
+      - CONFIG_PATH=/app/config.yaml
+      - WORKER_COUNT=3
+      - OLLAMA_URL=http://ollama:11434
+      - LOG_LEVEL=info
+    volumes:
+      - tag_mule_data:/data
+      - ./tag_mule/config.yaml:/app/config.yaml:ro
+    depends_on:
+      - ollama
+    networks:
+      - dtr-network
+    restart: unless-stopped
+
+  tureparto-server:
+    build:
+      context: ./tureparto
+      dockerfile: Dockerfile
+    container_name: tureparto_server
+    ports:
+      - "3000:3000"
+    environment:
+      - SERVER_PORT=3000
+      - DB_SOURCE_PATH=/app/data/tureparto.db
+      - VERIFY_TOKEN=${VERIFY_TOKEN:-changeme}
+    volumes:
+      - wsp_data:/app/data
+    networks:
+      - dtr-network
+    restart: unless-stopped
+
+  cliente-tureparto:
+    build:
+      context: ./tureparto
+      dockerfile: Dockerfile
+    container_name: cliente_tureparto
+    command: ["./cliente-tureparto"]
+    ports:
+      - "3001:3001"
+    environment:
+      - CLIENTE_PORT=3001
+      - DB_SOURCE_PATH=/data/readonly/tureparto.db
+      - DB_RICH_PATH=/data/rich/tureparto_rich.db
+      - TAG_MULE_URL=http://tag-mule:8080/api/v1/enrich
+      - POLL_INTERVAL_SECONDS=30
+    volumes:
+      - wsp_data:/data/readonly:ro
+      - rich_data:/data/rich
+    depends_on:
+      - tureparto-server
+      - tag-mule
+    networks:
+      - dtr-network
+    restart: unless-stopped
+
+volumes:
+  ollama_data:
+  tag_mule_data:
+  wsp_data:
+  rich_data:
+
+networks:
+  dtr-network:
+    driver: bridge
