@@ -1,0 +1,49 @@
+version: "3.9"
+
+services:
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    restart: unless-stopped
+    networks:
+      - dtr-network
+
+  tag-mule:
+    build:
+      context: ./tag_mule
+      dockerfile: Dockerfile
+    container_name: tag-mule
+    ports:
+      - "8080:8080"
+    environment:
+      - OLLAMA_URL=http://ollama:11434
+      - CONFIG_PATH=/app/config.yaml
+    volumes:
+      - ./tag_mule/config.yaml:/app/config.yaml
+    depends_on:
+      - ollama
+    restart: unless-stopped
+    networks:
+      - dtr-network
+
+  cliente-tureparto:
+    build:
+      context: ./tureparto
+      dockerfile: Dockerfile
+    container_name: cliente-tureparto
+    ports:
+      - "3001:3001"
+    restart: unless-stopped
+    networks:
+      - dtr-network
+
+volumes:
+  ollama_data:
+
+networks:
+  dtr-network:
+    driver: bridge
