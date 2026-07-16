@@ -1,8 +1,3 @@
-Aquí tenés el README reorganizado. No falta nada de lo que ya estaba, solo está reordenado para que el flujo sea más claro y se entienda mejor el paso de los modelos.
-
----
-
-```markdown
 # dtr-direc-tec-raf
 
 Monorepo padre: tag-mule + tureparto
