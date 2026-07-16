@@ -1,0 +1,8 @@
+[submodule "tag_mule"]
+	path = tag_mule
+	url = https://github.com/doro098/tag_mule.git
+	branch = master
+[submodule "tureparto"]
+	path = tureparto
+	url = https://github.com/doro098/tureparto.git
+	branch = main
